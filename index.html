@@ -1,0 +1,183 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QR Code Generator (Python via PyScript)</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
+    #qr { margin-top: 1rem; display:flex; align-items:center; justify-content:center; min-height: 280px; border: 1px dashed #9aa; border-radius: 8px; padding: 1rem; }
+    input, select, button, a { font-size: 1rem; }
+    input, select, button { padding: .6rem .8rem; }
+    input { width: 100%; }
+    .row { display:flex; gap:.75rem; flex-wrap:wrap; margin-top:.5rem; align-items:center; }
+    .row > * { min-width: 140px; }
+    small { opacity:.75 }
+    a.button-like { text-decoration:none; display:inline-block; padding:.6rem .8rem; border:1px solid #888; border-radius:6px; }
+    .muted { opacity:.55; pointer-events:none; }
+    img#preview { image-rendering: pixelated; max-width: 100%; height: auto; }
+    .hidden { display:none; }
+  </style>
+
+  <!-- PyScript (runs Python in the browser) -->
+  <link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css">
+  <script defer src="https://pyscript.net/latest/pyscript.js"></script>
+</head>
+<body>
+  <header>
+    <h1>QR Code Generator</h1>
+    <a href="https://github.com/Sachet-17/QR-Code-Generator" target="_blank" rel="noopener">View on GitHub</a>
+  </header>
+
+  <p>Type text or a URL and click Generate. Then Download PNG.</p>
+  <input id="text" placeholder="https://example.com" />
+
+  <div class="row">
+    <select id="ecLevel" title="Error correction level">
+      <option value="M">Error correction: M</option>
+      <option value="L">Error correction: L</option>
+      <option value="Q">Error correction: Q</option>
+      <option value="H">Error correction: H</option>
+    </select>
+    <select id="size" title="Output size (px)">
+      <option value="256">Size: 256</option>
+      <option value="384">Size: 384</option>
+      <option value="512">Size: 512</option>
+    </select>
+    <button id="btn" type="button" class="muted" disabled>Generate</button>
+    <a id="download" class="button-like muted" href="#" download="qr.png" aria-disabled="true">Download PNG</a>
+    <a id="openTab" class="button-like muted" href="#" target="_blank" rel="noopener" aria-disabled="true">Open image</a>
+  </div>
+
+  <div id="qr" aria-live="polite">
+    <img id="preview" alt="QR preview will appear here" />
+  </div>
+
+  <p id="status" class="hidden"><small>Loading Python & libraries…</small></p>
+  <p id="err" class="hidden" style="color:#c00;"><small>⚠️ Couldn’t load Python libs. Do a hard refresh.</small></p>
+  <p><small>Runs fully in your browser, powered by Python + PyScript.</small></p>
+
+  <!-- Everything below is Python -->
+  <py-script>
+from pyodide.ffi import to_js
+import asyncio, io, re
+import js
+
+status = js.document.getElementById("status")
+err = js.document.getElementById("err")
+btn = js.document.getElementById("btn")
+dl = js.document.getElementById("download")
+open_tab = js.document.getElementById("openTab")
+preview = js.document.getElementById("preview")
+text_el = js.document.getElementById("text")
+size_el = js.document.getElementById("size")
+ecl_el = js.document.getElementById("ecLevel")
+mql = js.window.matchMedia('(prefers-color-scheme: dark)')
+
+def set_enabled(el, yes: bool):
+    if yes:
+        el.classList.remove('muted')
+        el.removeAttribute('aria-disabled')
+        try: el.removeAttribute('disabled')
+        except Exception: pass
+    else:
+        el.classList.add('muted')
+        el.setAttribute('aria-disabled', 'true')
+        try: el.setAttribute('disabled', '')
+        except Exception: pass
+
+async def load_libs():
+    status.classList.remove('hidden')
+    try:
+        import micropip
+        await micropip.install("segno==1.6.1")  # pure-Python QR lib
+        status.classList.add('hidden')
+        return True
+    except Exception as e:
+        status.classList.add('hidden')
+        err.classList.remove('hidden')
+        print("LIB LOAD ERROR:", e)
+        return False
+
+def get_colors():
+    # segno uses 'dark' (modules) and 'light' (background)
+    return ("#ffffff", "#000000") if mql.matches else ("#000000", "#ffffff")
+
+def safe_name(s: str) -> str:
+    s = s or "qr"
+    s = re.sub(r"[^a-zA-Z0-9-_]+", "_", s).strip("_")
+    return (s[:32] or "qr") + ".png"
+
+def compute_scale(qr, desired_px: int, border: int = 4) -> int:
+    # segno: final_px = scale * (symbol_size + 2*border)
+    modules = qr.symbol_size
+    denom = modules + 2 * border
+    if denom <= 0:
+        return 8
+    scale = max(1, int(desired_px // denom))
+    return max(1, scale)
+
+def set_download(url: str, filename: str):
+    dl.href = url
+    dl.download = filename
+    open_tab.href = url
+    set_enabled(dl, True)
+    set_enabled(open_tab, True)
+
+async def draw(value: str):
+    set_enabled(dl, False); set_enabled(open_tab, False)
+    value = (value or "Hello, world!").strip()
+    try:
+        import segno
+        qr = segno.make(value, error=ecl_el.value.lower())
+        desired_px = int(size_el.value)
+        border = 4
+        scale = compute_scale(qr, desired_px, border=border)
+
+        dark, light = get_colors()
+        buf = io.BytesIO()
+        qr.save(buf, kind="png", scale=scale, border=border, dark=dark, light=light)
+        data = buf.getvalue()
+
+        blob = js.Blob.new([to_js(data)], { "type": "image/png" })
+        url = js.URL.createObjectURL(blob)
+        preview.src = url
+        set_download(url, safe_name(value))
+    except Exception as e:
+        js.alert(f"Failed to generate QR: {e}")
+
+def on_generate(evt=None):
+    asyncio.ensure_future(draw(text_el.value))
+
+def init_events():
+    btn.addEventListener("click", on_generate)
+    def on_key(e):
+        if e.key == "Enter":
+            on_generate()
+    text_el.addEventListener("keydown", on_key)
+    size_el.addEventListener("change", on_generate)
+    ecl_el.addEventListener("change", on_generate)
+    def theme_changed(_=None):
+        on_generate()
+    try:
+        mql.addEventListener("change", theme_changed)
+    except Exception:
+        try:
+            mql.addListener(theme_changed)
+        except Exception:
+            pass
+
+async def main():
+    ok = await load_libs()
+    if not ok:
+        return
+    set_enabled(btn, True)
+    init_events()
+    await draw("")
+
+asyncio.ensure_future(main())
+  </py-script>
+</body>
+</html>
