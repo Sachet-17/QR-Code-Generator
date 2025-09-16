@@ -9,11 +9,13 @@
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
     header { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
     #qr { margin-top: 1rem; display:flex; align-items:center; justify-content:center; min-height: 280px; border: 1px dashed #9aa; border-radius: 8px; padding: 1rem; }
-    input, select, button { font-size: 1rem; padding: .6rem .8rem; }
+    input, select, button, a { font-size: 1rem; }
+    input, select, button { padding: .6rem .8rem; }
     input { width: 100%; }
-    .row { display:flex; gap:.75rem; flex-wrap:wrap; margin-top:.5rem; }
-    .row > * { flex:1; min-width: 140px; }
+    .row { display:flex; gap:.75rem; flex-wrap:wrap; margin-top:.5rem; align-items:center; }
+    .row > * { min-width: 140px; }
     small { opacity:.75 }
+    a.button-like { text-decoration:none; display:inline-block; padding:.6rem .8rem; border:1px solid #888; border-radius:6px; }
   </style>
 </head>
 <body>
@@ -37,14 +39,14 @@
       <option value="384">Size: 384</option>
       <option value="512">Size: 512</option>
     </select>
-    <button id="btn">Generate</button>
-    <a id="download" download="qr.png" style="align-self:center;">Download PNG</a>
+    <button id="btn" type="button">Generate</button>
+    <a id="download" class="button-like" download="qr.png" href="#">Download PNG</a>
   </div>
 
   <div id="qr" aria-live="polite"></div>
   <p><small>Works fully in your browser—no installs.</small></p>
 
-  <!-- Lightweight QR library via CDN -->
+  <!-- QR library -->
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
   <script>
     const input = document.getElementById('text');
@@ -55,36 +57,51 @@
     const dl = document.getElementById('download');
 
     function getColors() {
-      const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      return dark 
-        ? { fill: "white", back: "black" }   // Dark mode → white QR on black
-        : { fill: "black", back: "white" };  // Light mode → black QR on white
+      const darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      return darkMode
+        ? { dark: '#ffffff', light: '#000000' } // white QR on black in dark mode
+        : { dark: '#000000', light: '#ffffff' }; // black QR on white in light mode
     }
 
-    function draw(text) {
+    function renderQRToCanvas(text, opts) {
+      return new Promise((resolve, reject) => {
+        QRCode.toCanvas(opts.canvas, text, {
+          width: opts.width,
+          errorCorrectionLevel: opts.ecl,
+          color: getColors()
+        }, (err) => err ? reject(err) : resolve(opts.canvas));
+      });
+    }
+
+    async function draw(text) {
       qrDiv.innerHTML = '';
       const value = (text || 'Hello, world!').trim();
+
       const canvas = document.createElement('canvas');
       qrDiv.appendChild(canvas);
 
-      const colors = getColors();
-      QRCode.toCanvas(canvas, value, {
-        width: parseInt(sizeSel.value, 10),
-        errorCorrectionLevel: ecSel.value,
-        color: { dark: colors.fill, light: colors.back }
-      }, err => { if (err) alert(err.message) });
-
-      // set download link to PNG
-      setTimeout(() => { try { dl.href = canvas.toDataURL('image/png'); } catch(e) {} }, 50);
+      try {
+        await renderQRToCanvas(value, {
+          canvas,
+          width: parseInt(sizeSel.value, 10),
+          ecl: ecSel.value
+        });
+        // Set download link after render completes
+        const dataUrl = canvas.toDataURL('image/png');
+        dl.href = dataUrl;
+        // Optional: include some of the text in the filename if short
+        const safe = value.replace(/[^a-z0-9-_]+/gi, '_').slice(0,32) || 'qr';
+        dl.download = `${safe}.png`;
+      } catch (e) {
+        alert('Failed to generate QR: ' + e.message);
+      }
     }
 
     btn.addEventListener('click', () => draw(input.value));
     input.addEventListener('keydown', e => { if (e.key === 'Enter') draw(input.value); });
-
-    // Regenerate when system theme changes
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => draw(input.value));
 
-    // First render
+    // initial render
     draw('');
   </script>
 </body>
