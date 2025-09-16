@@ -2,6 +2,8 @@
 
 A tiny desktop app to turn any link into a crisp QR code you can preview and save as a JPEG.
 
+Web version: 👉 **Live demo:** https://sachet-17.github.io/QR-Code-Generator/
+
 ## Features
 - 🔗 Smart URL handling (auto-adds `https://` if missing)
 - 🧾 Clean filenames (`qr_<host>.jpg`)
