@@ -16,6 +16,8 @@
     .row > * { min-width: 140px; }
     small { opacity:.75 }
     a.button-like { text-decoration:none; display:inline-block; padding:.6rem .8rem; border:1px solid #888; border-radius:6px; }
+    .muted { opacity:.65; }
+    img#preview { image-rendering: pixelated; max-width: 100%; height: auto; }
   </style>
 </head>
 <body>
@@ -40,69 +42,85 @@
       <option value="512">Size: 512</option>
     </select>
     <button id="btn" type="button">Generate</button>
-    <a id="download" class="button-like" download="qr.png" href="#">Download PNG</a>
+    <a id="download" class="button-like muted" href="#" download="qr.png" aria-disabled="true">Download PNG</a>
+    <a id="openTab" class="button-like" href="#" target="_blank" rel="noopener">Open image</a>
   </div>
 
-  <div id="qr" aria-live="polite"></div>
+  <div id="qr" aria-live="polite">
+    <img id="preview" alt="QR preview will appear here" />
+  </div>
   <p><small>Works fully in your browser—no installs.</small></p>
 
   <!-- QR library -->
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
   <script>
-    const input = document.getElementById('text');
-    const btn = document.getElementById('btn');
-    const qrDiv = document.getElementById('qr');
-    const sizeSel = document.getElementById('size');
-    const ecSel = document.getElementById('ecLevel');
-    const dl = document.getElementById('download');
+    document.addEventListener('DOMContentLoaded', () => {
+      const input = document.getElementById('text');
+      const btn = document.getElementById('btn');
+      const sizeSel = document.getElementById('size');
+      const ecSel = document.getElementById('ecLevel');
+      const dl = document.getElementById('download');
+      const openTab = document.getElementById('openTab');
+      const preview = document.getElementById('preview');
+      const mql = window.matchMedia('(prefers-color-scheme: dark)');
 
-    function getColors() {
-      const darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      return darkMode
-        ? { dark: '#ffffff', light: '#000000' } // white QR on black in dark mode
-        : { dark: '#000000', light: '#ffffff' }; // black QR on white in light mode
-    }
-
-    function renderQRToCanvas(text, opts) {
-      return new Promise((resolve, reject) => {
-        QRCode.toCanvas(opts.canvas, text, {
-          width: opts.width,
-          errorCorrectionLevel: opts.ecl,
-          color: getColors()
-        }, (err) => err ? reject(err) : resolve(opts.canvas));
-      });
-    }
-
-    async function draw(text) {
-      qrDiv.innerHTML = '';
-      const value = (text || 'Hello, world!').trim();
-
-      const canvas = document.createElement('canvas');
-      qrDiv.appendChild(canvas);
-
-      try {
-        await renderQRToCanvas(value, {
-          canvas,
-          width: parseInt(sizeSel.value, 10),
-          ecl: ecSel.value
-        });
-        // Set download link after render completes
-        const dataUrl = canvas.toDataURL('image/png');
-        dl.href = dataUrl;
-        // Optional: include some of the text in the filename if short
-        const safe = value.replace(/[^a-z0-9-_]+/gi, '_').slice(0,32) || 'qr';
-        dl.download = `${safe}.png`;
-      } catch (e) {
-        alert('Failed to generate QR: ' + e.message);
+      function getColors() {
+        const dark = mql.matches;
+        return dark
+          ? { dark: '#ffffff', light: '#000000' } // white dots on black bg
+          : { dark: '#000000', light: '#ffffff' }; // black dots on white bg
       }
-    }
 
-    btn.addEventListener('click', () => draw(input.value));
-    input.addEventListener('keydown', e => { if (e.key === 'Enter') draw(input.value); });
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => draw(input.value));
+      function safeName(s) {
+        return (s || 'qr').replace(/[^a-z0-9-_]+/gi,'_').slice(0,32) || 'qr';
+      }
 
-    // initial render
-    draw('');
+      function setDownload(url, name) {
+        dl.href = url;
+        dl.download = name + '.png';
+        dl.classList.remove('muted');
+        dl.removeAttribute('aria-disabled');
+        openTab.href = url; // fallback for browsers that block data-URL downloads
+      }
+
+      function generate(value) {
+        return new Promise((resolve, reject) => {
+          if (!window.QRCode) return reject(new Error('QR library failed to load.'));
+          QRCode.toDataURL(
+            value,
+            {
+              width: parseInt(sizeSel.value, 10),
+              errorCorrectionLevel: ecSel.value,
+              color: getColors()
+            },
+            (err, url) => err ? reject(err) : resolve(url)
+          );
+        });
+      }
+
+      async function draw(text) {
+        const value = (text || 'Hello, world!').trim();
+        dl.classList.add('muted'); dl.setAttribute('aria-disabled','true'); dl.href = '#';
+        try {
+          const url = await generate(value);
+          preview.src = url;
+          setDownload(url, safeName(value));
+        } catch (e) {
+          alert('Failed to generate QR: ' + e.message);
+        }
+      }
+
+      // Events
+      btn.addEventListener('click', () => draw(input.value));
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') draw(input.value); });
+      // Theme-change listener (support old Safari)
+      const themeChanged = () => draw(input.value);
+      if (mql.addEventListener) mql.addEventListener('change', themeChanged);
+      else if (mql.addListener) mql.addListener(themeChanged);
+
+      // First render
+      draw('');
+    });
   </script>
 </body>
 </html>
