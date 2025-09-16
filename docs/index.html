@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QR Code Generator</title>
+  <style>
+    :root{color-scheme: light dark}
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
+    #qr { margin-top: 1rem; display:flex; align-items:center; justify-content:center; min-height: 280px; border: 1px dashed #9aa; border-radius: 8px; padding: 1rem; }
+    input, select, button { font-size: 1rem; padding: .6rem .8rem; }
+    input { width: 100%; }
+    .row { display:flex; gap:.75rem; flex-wrap:wrap; margin-top:.5rem; }
+    .row > * { flex:1; min-width: 140px; }
+    small { opacity:.75 }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>QR Code Generator</h1>
+    <a href="https://github.com/Sachet-17/QR-Code-Generator" target="_blank" rel="noopener">View on GitHub</a>
+  </header>
+
+  <p>Type text or a URL and click Generate. Then Download PNG.</p>
+  <input id="text" placeholder="https://example.com" />
+
+  <div class="row">
+    <select id="ecLevel" title="Error correction level">
+      <option value="M">Error correction: M</option>
+      <option value="L">Error correction: L</option>
+      <option value="Q">Error correction: Q</option>
+      <option value="H">Error correction: H</option>
+    </select>
+    <select id="size" title="Output size">
+      <option value="256">Size: 256</option>
+      <option value="384">Size: 384</option>
+      <option value="512">Size: 512</option>
+    </select>
+    <button id="btn">Generate</button>
+    <a id="download" download="qr.png" style="align-self:center;">Download PNG</a>
+  </div>
+
+  <div id="qr" aria-live="polite"></div>
+  <p><small>Works fully in your browser—no installs.</small></p>
+
+  <!-- Lightweight QR library via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+  <script>
+    const input = document.getElementById('text');
+    const btn = document.getElementById('btn');
+    const qrDiv = document.getElementById('qr');
+    const sizeSel = document.getElementById('size');
+    const ecSel = document.getElementById('ecLevel');
+    const dl = document.getElementById('download');
+
+    function draw(text) {
+      qrDiv.innerHTML = '';
+      const value = (text || 'Hello, world!').trim();
+      const canvas = document.createElement('canvas');
+      qrDiv.appendChild(canvas);
+      QRCode.toCanvas(canvas, value, {
+        width: parseInt(sizeSel.value, 10),
+        errorCorrectionLevel: ecSel.value
+      }, err => { if (err) alert(err.message) });
+      // set download link to PNG
+      setTimeout(() => { try { dl.href = canvas.toDataURL('image/png'); } catch(e) {} }, 50);
+    }
+
+    btn.addEventListener('click', () => draw(input.value));
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') draw(input.value); });
+
+    // First render
+    draw('');
+  </script>
+</body>
+</html>
