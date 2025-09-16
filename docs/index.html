@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>QR Code Generator</title>
   <style>
-    :root{color-scheme: light dark}
+    :root { color-scheme: light dark; }
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
     header { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
     #qr { margin-top: 1rem; display:flex; align-items:center; justify-content:center; min-height: 280px; border: 1px dashed #9aa; border-radius: 8px; padding: 1rem; }
@@ -54,21 +54,35 @@
     const ecSel = document.getElementById('ecLevel');
     const dl = document.getElementById('download');
 
+    function getColors() {
+      const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      return dark 
+        ? { fill: "white", back: "black" }   // Dark mode → white QR on black
+        : { fill: "black", back: "white" };  // Light mode → black QR on white
+    }
+
     function draw(text) {
       qrDiv.innerHTML = '';
       const value = (text || 'Hello, world!').trim();
       const canvas = document.createElement('canvas');
       qrDiv.appendChild(canvas);
+
+      const colors = getColors();
       QRCode.toCanvas(canvas, value, {
         width: parseInt(sizeSel.value, 10),
-        errorCorrectionLevel: ecSel.value
+        errorCorrectionLevel: ecSel.value,
+        color: { dark: colors.fill, light: colors.back }
       }, err => { if (err) alert(err.message) });
+
       // set download link to PNG
       setTimeout(() => { try { dl.href = canvas.toDataURL('image/png'); } catch(e) {} }, 50);
     }
 
     btn.addEventListener('click', () => draw(input.value));
     input.addEventListener('keydown', e => { if (e.key === 'Enter') draw(input.value); });
+
+    // Regenerate when system theme changes
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => draw(input.value));
 
     // First render
     draw('');
