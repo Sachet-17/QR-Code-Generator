@@ -1,8 +1,8 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>QR Code Generator (Python via PyScript)</title>
   <style>
     :root { color-scheme: light dark; }
@@ -21,9 +21,14 @@
     .hidden { display:none; }
   </style>
 
-  <!-- PyScript (runs Python in the browser) -->
+  <!-- PyScript -->
   <link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css">
   <script defer src="https://pyscript.net/latest/pyscript.js"></script>
+
+  <!-- Tell PyScript which packages to load before running Python -->
+  <py-config>
+packages = ["segno==1.6.1"]
+  </py-config>
 </head>
 <body>
   <header>
@@ -55,26 +60,27 @@
     <img id="preview" alt="QR preview will appear here" />
   </div>
 
-  <p id="status" class="hidden"><small>Loading Python & libraries…</small></p>
-  <p id="err" class="hidden" style="color:#c00;"><small>⚠️ Couldn’t load Python libs. Do a hard refresh.</small></p>
+  <p id="status"><small>Loading Python…</small></p>
+  <p id="err" class="hidden" style="color:#c00;"><small>⚠️ Couldn’t load Python libs. Hard refresh the page.</small></p>
   <p><small>Runs fully in your browser, powered by Python + PyScript.</small></p>
 
   <!-- Everything below is Python -->
   <py-script>
+from js import document, window, Blob, URL, alert
 from pyodide.ffi import to_js
-import asyncio, io, re
-import js
+import io, re
 
-status = js.document.getElementById("status")
-err = js.document.getElementById("err")
-btn = js.document.getElementById("btn")
-dl = js.document.getElementById("download")
-open_tab = js.document.getElementById("openTab")
-preview = js.document.getElementById("preview")
-text_el = js.document.getElementById("text")
-size_el = js.document.getElementById("size")
-ecl_el = js.document.getElementById("ecLevel")
-mql = js.window.matchMedia('(prefers-color-scheme: dark)')
+# Elements
+status = document.getElementById("status")
+err = document.getElementById("err")
+btn = document.getElementById("btn")
+dl = document.getElementById("download")
+open_tab = document.getElementById("openTab")
+preview = document.getElementById("preview")
+text_el = document.getElementById("text")
+size_el = document.getElementById("size")
+ecl_el = document.getElementById("ecLevel")
+mql = window.matchMedia('(prefers-color-scheme: dark)')
 
 def set_enabled(el, yes: bool):
     if yes:
@@ -88,21 +94,18 @@ def set_enabled(el, yes: bool):
         try: el.setAttribute('disabled', '')
         except Exception: pass
 
-async def load_libs():
-    status.classList.remove('hidden')
-    try:
-        import micropip
-        await micropip.install("segno==1.6.1")  # pure-Python QR lib
-        status.classList.add('hidden')
-        return True
-    except Exception as e:
-        status.classList.add('hidden')
-        err.classList.remove('hidden')
-        print("LIB LOAD ERROR:", e)
-        return False
+# segno is preloaded via <py-config>; import now
+try:
+    import segno
+    status.classList.add('hidden')
+    set_enabled(btn, True)
+except Exception as e:
+    status.classList.add('hidden')
+    err.classList.remove('hidden')
+    raise
 
 def get_colors():
-    # segno uses 'dark' (modules) and 'light' (background)
+    # segno expects (dark, light)
     return ("#ffffff", "#000000") if mql.matches else ("#000000", "#ffffff")
 
 def safe_name(s: str) -> str:
@@ -111,12 +114,12 @@ def safe_name(s: str) -> str:
     return (s[:32] or "qr") + ".png"
 
 def compute_scale(qr, desired_px: int, border: int = 4) -> int:
-    # segno: final_px = scale * (symbol_size + 2*border)
+    # final_px = scale * (modules + 2*border)
     modules = qr.symbol_size
     denom = modules + 2 * border
     if denom <= 0:
         return 8
-    scale = max(1, int(desired_px // denom))
+    scale = max(1, desired_px // denom)
     return max(1, scale)
 
 def set_download(url: str, filename: str):
@@ -126,58 +129,55 @@ def set_download(url: str, filename: str):
     set_enabled(dl, True)
     set_enabled(open_tab, True)
 
-async def draw(value: str):
-    set_enabled(dl, False); set_enabled(open_tab, False)
+def draw(value: str):
+    # Disable download links while regenerating
+    set_enabled(dl, False)
+    set_enabled(open_tab, False)
+
     value = (value or "Hello, world!").strip()
     try:
-        import segno
         qr = segno.make(value, error=ecl_el.value.lower())
         desired_px = int(size_el.value)
         border = 4
-        scale = compute_scale(qr, desired_px, border=border)
+        scale = compute_scale(qr, desired_px, border)
 
         dark, light = get_colors()
         buf = io.BytesIO()
         qr.save(buf, kind="png", scale=scale, border=border, dark=dark, light=light)
         data = buf.getvalue()
 
-        blob = js.Blob.new([to_js(data)], { "type": "image/png" })
-        url = js.URL.createObjectURL(blob)
+        blob = Blob.new([to_js(data)], { "type": "image/png" })
+        url = URL.createObjectURL(blob)
         preview.src = url
         set_download(url, safe_name(value))
     except Exception as e:
-        js.alert(f"Failed to generate QR: {e}")
+        alert(f"Failed to generate QR: {e}")
 
 def on_generate(evt=None):
-    asyncio.ensure_future(draw(text_el.value))
+    draw(text_el.value)
 
-def init_events():
-    btn.addEventListener("click", on_generate)
-    def on_key(e):
-        if e.key == "Enter":
-            on_generate()
-    text_el.addEventListener("keydown", on_key)
-    size_el.addEventListener("change", on_generate)
-    ecl_el.addEventListener("change", on_generate)
-    def theme_changed(_=None):
+# Bind events
+btn.addEventListener("click", on_generate)
+def on_key(e):
+    if e.key == "Enter":
         on_generate()
+text_el.addEventListener("keydown", on_key)
+size_el.addEventListener("change", on_generate)
+ecl_el.addEventListener("change", on_generate)
+
+# Re-render if theme changes
+def theme_changed(_=None):
+    on_generate()
+try:
+    mql.addEventListener("change", theme_changed)
+except Exception:
     try:
-        mql.addEventListener("change", theme_changed)
+        mql.addListener(theme_changed)
     except Exception:
-        try:
-            mql.addListener(theme_changed)
-        except Exception:
-            pass
+        pass
 
-async def main():
-    ok = await load_libs()
-    if not ok:
-        return
-    set_enabled(btn, True)
-    init_events()
-    await draw("")
-
-asyncio.ensure_future(main())
+# Initial render
+draw("")
   </py-script>
 </body>
 </html>
